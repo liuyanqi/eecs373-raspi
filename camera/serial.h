@@ -13,7 +13,7 @@
 
 int serial_init();
 
-int interrupt_init();
+int interrupt_init(void (*f)(void));
 
 int serial_send(char* msg);
 

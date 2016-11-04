@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "serial.h"
 
@@ -17,6 +18,9 @@ extern int fd;
 int thresh = 100;
 int max_thresh = 255;
 RNG rng(12345);
+int counter =0;
+
+int current_detection =0;
 
 void find_maximum(int count_array[6], int size){
         int max_count = 0;
@@ -31,30 +35,37 @@ void find_maximum(int count_array[6], int size){
 
             case 1:
                 cout<<"pink is detected"<<endl;
+		current_detection =1;
                 break;
             case 2:
                 cout<<"yellow is detected"<<endl;
+		current_detection =2;
                 break;
             case 3:
                 cout<<"red is detected"<<endl;
+		current_detection =3;
                 break;
             case 4:
                 cout<<"orange is detected"<<endl;
+		current_detection =4;
                 break;
             case 5:
                 cout<<"green is detected"<<endl;
+		current_detection =5;
                 break;
             case 6:
                 cout<<"blue is detected"<<endl;
+		current_detection =6;
                 break;
             default:
+		current_detection =0;
                 cout<<"nothing is detected"<<endl;
         }
-        cout<<"number detected:" <<max_count<<endl;
+        //cout<<"number detected:" <<max_count<<endl;
 
 }
 
-void color_detection(Mat &img, Mat &color_seg){
+void color_detection(Mat& img, Mat& color_seg){
     GaussianBlur(img,img, Size(71,71), 0,0);
     GaussianBlur(img,img, Size(9,9), 0,0);
 
@@ -77,6 +88,7 @@ void color_detection(Mat &img, Mat &color_seg){
 
     for (int y =0; y <img.rows; y++){
         for (int x =0; x < img.cols; x++){
+      
             Vec3b color = img.at<Vec3b>(y,x);
             uchar red = color.val[2];
             uchar green = color.val[1];
@@ -142,13 +154,21 @@ void color_detection(Mat &img, Mat &color_seg){
     count_array[5] = blue_counter;
     
     find_maximum(count_array,6);
-    cout<<"pink_counter: " << pink_counter << "yellow_counter: "<<yellow_counter <<"red_counter: "<<red_counter << "orange_counter: " << orange_counter<<
-     "green_counter: "<<green_counter <<"blue_counter: " << blue_counter<<endl;
+   // cout<<"pink_counter: " << pink_counter << "yellow_counter: "<<yellow_counter <<"red_counter: "<<red_counter << "orange_counter: " << orange_counter<<
+   //  "green_counter: "<<green_counter <<"blue_counter: " << blue_counter<<endl;
 
 
 }
 
-
+void myInterrupt2(void){
+	printf("interrupt2 is called %d\n", counter);
+	char message[2];
+	message[0] = (char)current_detection;
+	message[1] = '\0';
+	serial_send(message);
+	printf("serial sent color: %d\n", current_detection);
+	counter++;
+}
 
 int main(){
     serial_init();
@@ -156,10 +176,7 @@ int main(){
 	cerr<<"Error opening wiringpi"<<endl;
 	return 1;
     }
-    if(interrupt_init() ==1){
-	cerr<<"Unable to set up"<<endl;
-	return 1;
-    }
+
 
     raspicam::RaspiCam_Cv Camera;
     Camera.set(CV_CAP_PROP_FORMAT, CV_8UC3);
@@ -169,14 +186,21 @@ int main(){
 	return -1;
      }
 
+    if(interrupt_init(&myInterrupt2) ==1){
+	cerr<<"Unable to set up"<<endl;
+	return 1;
+    }
+
     char key =0;
     Mat image;
     while( key != 27){
         Camera.grab();
         Camera.retrieve(image);
 	Mat sub_img = image(cv::Rect(380, 460, 400, 500));
-        Mat color_seg (sub_img.rows, sub_img.cols, CV_8UC3);
-        color_detection(sub_img, color_seg);
+	Mat color_seg (sub_img.rows, sub_img.cols, CV_8UC3);
+
+	//cout<<sub_img.rows <<" "<<sub_img.cols<<endl;
+	color_detection(sub_img, color_seg);
 	key = waitKey(50);
         imshow("result", color_seg);
 	imshow("color", sub_img);

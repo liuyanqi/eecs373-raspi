@@ -35,8 +35,8 @@ void myInterrupt(void){
 	   printf("serial sent\n");
 }
 
-int interrupt_init(){
-	if(wiringPiISR(BUTTON_PIN, INT_EDGE_FALLING,&myInterrupt)<0){
+int interrupt_init(void (*f)(void)){
+	if(wiringPiISR(BUTTON_PIN, INT_EDGE_FALLING,f)<0){
 		printf("Unable to set up ISR\n");
 		return 1;
 	}
