@@ -7,7 +7,7 @@
 #include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <pthread.h>
 #include "serial.h"
 
 using namespace std;
@@ -21,7 +21,8 @@ RNG rng(12345);
 int counter =0;
 
 int current_detection =0;
-
+pthread_mutex_t img_mutex;
+Mat img;
 void find_maximum(int count_array[6], int size){
         int max_count = 0;
         int idx =0;
@@ -65,12 +66,13 @@ void find_maximum(int count_array[6], int size){
 
 }
 
-void color_detection(Mat& img, Mat& color_seg){
-    GaussianBlur(img,img, Size(71,71), 0,0);
-    GaussianBlur(img,img, Size(9,9), 0,0);
+void color_detection(){
+    GaussianBlur(img,img, Size(5,5), 0,0);
+   // GaussianBlur(img,img, Size(9,9), 0,0);
 
     
     Mat seg(img.rows, img.cols, CV_8UC1);
+    Mat color_seg(img.rows, img.cols, CV_8UC3);
     Mat seg2;
 
     int pink_counter =0;
@@ -84,11 +86,11 @@ void color_detection(Mat& img, Mat& color_seg){
     Scalar pink_low(0,0,100);
     Scalar pink_high(100,100,255);
     // inRange(img,pink_low, pink_high,seg2);
-
-
+    //cout<<img.rows<<" " <<img.cols<<endl;
+    pthread_mutex_lock(&img_mutex);
     for (int y =0; y <img.rows; y++){
         for (int x =0; x < img.cols; x++){
-      
+
             Vec3b color = img.at<Vec3b>(y,x);
             uchar red = color.val[2];
             uchar green = color.val[1];
@@ -146,6 +148,8 @@ void color_detection(Mat& img, Mat& color_seg){
             }
         }
     }
+
+	
     count_array[0] = pink_counter;
     count_array[1] = yellow_counter;
     count_array[2] = red_counter;
@@ -154,6 +158,16 @@ void color_detection(Mat& img, Mat& color_seg){
     count_array[5] = blue_counter;
     
     find_maximum(count_array,6);
+
+    //send message
+    printf("color_detect is called %d\n", counter);
+    char message[2];
+    message[0] = (char)current_detection;
+    message[1] = '\0';
+    serial_send(message);
+    printf("serial sent color: %d\n", current_detection);
+	
+    pthread_mutex_unlock(&img_mutex);
    // cout<<"pink_counter: " << pink_counter << "yellow_counter: "<<yellow_counter <<"red_counter: "<<red_counter << "orange_counter: " << orange_counter<<
    //  "green_counter: "<<green_counter <<"blue_counter: " << blue_counter<<endl;
 
@@ -172,6 +186,7 @@ void myInterrupt2(void){
 
 int main(){
     serial_init();
+    Mat image;
     if(fd < 0){
 	cerr<<"Error opening wiringpi"<<endl;
 	return 1;
@@ -186,24 +201,31 @@ int main(){
 	return -1;
      }
 
-    if(interrupt_init(&myInterrupt2) ==1){
+    Camera.grab();
+    Camera.retrieve(image);
+    img = image(cv::Rect(380, 460, 400, 500));
+    if(interrupt_init(&color_detection) ==1){
 	cerr<<"Unable to set up"<<endl;
 	return 1;
     }
 
     char key =0;
-    Mat image;
+
     while( key != 27){
         Camera.grab();
+    	pthread_mutex_lock(&img_mutex);
         Camera.retrieve(image);
-	Mat sub_img = image(cv::Rect(380, 460, 400, 500));
-	Mat color_seg (sub_img.rows, sub_img.cols, CV_8UC3);
+	//Mat sub_img = image(cv::Rect(380, 460, 400, 500));
+	//Mat color_seg (sub_img.rows, sub_img.cols, CV_8UC3);
+	img = image(cv::Rect(380, 460, 400, 500));
+	pthread_mutex_unlock(&img_mutex);
 
 	//cout<<sub_img.rows <<" "<<sub_img.cols<<endl;
-	color_detection(sub_img, color_seg);
+	//color_detection();
 	key = waitKey(50);
-        imshow("result", color_seg);
-	imshow("color", sub_img);
+        //imshow("result", color_seg);
+	//imshow("color", sub_img);
+	//imshow("color", img);
 
 	if(key == 115) {//key=='s'
 	    char message[6];
@@ -215,6 +237,9 @@ int main(){
 	    message[5] = '\0';
 	    serial_send(message);
 	   cout<<"serial sent"<<endl;
+	}
+	if(key == 99){
+	    imwrite("image1.jpg", image);
 	}	
    }
     
